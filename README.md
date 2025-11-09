@@ -1,5 +1,7 @@
 # mmap & Pthreads Performance Analysis
 
+This project demonstrates the use of **Inter-Process Communication (IPC)** via **shared memory (mmap)** and **POSIX threads** to perform parallel computation.  
+It compares performance across four computation strategies using multiple processes and threads.
 ---
 
 ## 🚀 Features
