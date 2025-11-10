@@ -2,47 +2,58 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* Robust loader: uses fscanf to read any whitespace-separated integers. */
 int *load_numbers(const char *path, size_t *count) {
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        fprintf(stderr, "Error: Could not open file '%s'\n", path);
-        *count = 0;
-        exit(EXIT_FAILURE);
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        perror("fopen");
+        if (count) *count = 0;
+        return NULL;
     }
-    size_t cap = 128, n = 0;
+
+    size_t cap = 1024;
     int *arr = malloc(cap * sizeof(int));
     if (!arr) {
-        fprintf(stderr, "Error: Memory allocation failed\n");
-        fclose(f);
-        *count = 0;
-        exit(EXIT_FAILURE);
+        perror("malloc");
+        fclose(fp);
+        if (count) *count = 0;
+        return NULL;
     }
-    int tmp;
-    while (fscanf(f, "%d", &tmp) == 1) {
+
+    size_t n = 0;
+    long value;
+    while (fscanf(fp, "%ld", &value) == 1) {
         if (n == cap) {
             cap *= 2;
-            int *new_arr = realloc(arr, cap * sizeof(int));
-            if (!new_arr) {
-                fprintf(stderr, "Error: Memory allocation failed\n");
+            int *tmp = realloc(arr, cap * sizeof(int));
+            if (!tmp) {
+                perror("realloc");
                 free(arr);
-                fclose(f);
-                *count = 0;
-                exit(EXIT_FAILURE);
+                fclose(fp);
+                if (count) *count = 0;
+                return NULL;
             }
-            arr = new_arr;
+            arr = tmp;
         }
-        arr[n++] = tmp;
+        arr[n++] = (int)value;
     }
-    fclose(f);
+
+    fclose(fp);
+
     if (n == 0) {
-        fprintf(stderr, "Error: No valid numbers found in file '%s'\n", path);
         free(arr);
-        *count = 0;
-        exit(EXIT_FAILURE);
+        if (count) *count = 0;
+        return NULL;
     }
-    *count = n;
+
+    if (count) *count = n;
     return arr;
 }
 
-unsigned long add_func(int a, int b) { return (unsigned long)a + b; }
-unsigned long max_func(int a, int b) { return a > b ? a : b; }
+int add_func(int a, int b) {
+    return a + b;
+}
+
+int max_func(int a, int b) {
+    return (a > b) ? a : b;
+}

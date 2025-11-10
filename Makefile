@@ -1,6 +1,13 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -Iinclude -pthread
-SRC=$(wildcard src/*.c)
+CFLAGS=-Wall -Wextra -g -Iinclude -pthread
+
+SRC=src/main.c \
+    src/sequential_compute.c \
+    src/pipes_compute.c \
+    src/mmap_compute.c \
+    src/threads_compute.c \
+    src/utils.c
+
 OBJ=$(SRC:.c=.o)
 TARGET=compute
 
@@ -10,4 +17,4 @@ $(TARGET): $(OBJ)
 	$(CC) $(CFLAGS) -o $@ $(OBJ)
 
 clean:
-	del /Q src\*.o $(TARGET).exe 2>nul || true
+	rm -f $(OBJ) $(TARGET)

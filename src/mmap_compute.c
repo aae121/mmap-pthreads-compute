@@ -1,42 +1,70 @@
 #define _GNU_SOURCE
-#include "utils.h"
+#include "compute.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-unsigned long mmap_compute(int n_proc, const char *path, unsigned long (*func)(int, int)) {
+int mmap_compute(int n_proc, const char *path, int (*func)(int, int)) {
+    if (n_proc <= 0 || !func) return 0;
+
     size_t count = 0;
     int *numbers = load_numbers(path, &count);
-    if (!numbers || count == 0 || n_proc < 1) return 0;
-    
-    unsigned long *partials = mmap(NULL, n_proc * sizeof(unsigned long), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+    if (!numbers || count == 0) {
+        if (numbers) free(numbers);
+        return 0;
+    }
+
+    if (n_proc > (int)count) n_proc = (int)count;
+
+    int *partials = mmap(NULL,
+                         (size_t)n_proc * sizeof(int),
+                         PROT_READ | PROT_WRITE,
+                         MAP_SHARED | MAP_ANONYMOUS,
+                         -1,
+                         0);
     if (partials == MAP_FAILED) {
         perror("mmap");
         free(numbers);
         return 0;
     }
-    size_t chunk = count / n_proc, rem = count % n_proc;
-    pid_t *pids = malloc(n_proc * sizeof(pid_t));
+
+    size_t base = count / n_proc;
+    size_t rem  = count % n_proc;
+    size_t start = 0;
+
     for (int i = 0; i < n_proc; ++i) {
-        size_t start = i * chunk + (i < rem ? i : rem);
-        size_t end = start + chunk + (i < rem ? 1 : 0);
-        pids[i] = fork();
-        if (pids[i] == 0) {
-            unsigned long part = numbers[start];
-            for (size_t j = start + 1; j < end; ++j) part = func(part, numbers[j]);
-            partials[i] = part;
-            munmap(partials, n_proc * sizeof(unsigned long));
+        size_t len = base + (((size_t)i < rem) ? 1u : 0u);
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            munmap(partials, (size_t)n_proc * sizeof(int));
             free(numbers);
-            exit(0);
+            return 0;
         }
+        if (pid == 0) {
+            if (len == 0) _exit(0);
+            int acc = numbers[start];
+            for (size_t j = start + 1; j < start + len; ++j) {
+                acc = func(acc, numbers[j]);
+            }
+            partials[i] = acc;
+            _exit(0);
+        }
+        start += len;
     }
-    for (int i = 0; i < n_proc; ++i) waitpid(pids[i], NULL, 0);
-    unsigned long result = partials[0];
-    for (int i = 1; i < n_proc; ++i) result = func(result, partials[i]);
-    munmap(partials, n_proc * sizeof(unsigned long));
+
+    for (int i = 0; i < n_proc; ++i) {
+        wait(NULL);
+    }
+
+    int total = partials[0];
+    for (int i = 1; i < n_proc; ++i) {
+        total = func(total, partials[i]);
+    }
+
+    munmap(partials, (size_t)n_proc * sizeof(int));
     free(numbers);
-    free(pids);
-    return result;
+    return total;
 }

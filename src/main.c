@@ -3,35 +3,40 @@
 #include <stdio.h>
 #include <time.h>
 
-#define DATA_PATH "data/numbers.txt"
-#define N_PROC 4
-#define N_THREADS 4
+#define DATA_PATH   "data/numbers.txt"
+#define N_PROC      4
+#define N_THREADS   4
 
-static double elapsed(struct timespec *start, struct timespec *end) {
-    return (end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec) / 1e9;
+static double elapsed(const struct timespec *a, const struct timespec *b) {
+    return (b->tv_sec - a->tv_sec) + (b->tv_nsec - a->tv_nsec) / 1e9;
 }
 
-int main() {
+int main(void) {
     struct timespec t1, t2;
-    unsigned long res;
 
-    printf("Sequential: ");
+    // Sequential
     clock_gettime(CLOCK_MONOTONIC, &t1);
-    res = sequential_compute(DATA_PATH, add_func);
+    int seq = sequential_compute(DATA_PATH, add_func);
     clock_gettime(CLOCK_MONOTONIC, &t2);
-    printf("%lu (%.6f s)\n", res, elapsed(&t1, &t2));
+    printf("sequential: %d (%.6f s)\n", seq, elapsed(&t1, &t2));
 
-    printf("mmap (%d proc): ", N_PROC);
+    // Pipes (processes)
     clock_gettime(CLOCK_MONOTONIC, &t1);
-    res = mmap_compute(N_PROC, DATA_PATH, add_func);
+    int pipes = pipes_compute(N_PROC, DATA_PATH, add_func);
     clock_gettime(CLOCK_MONOTONIC, &t2);
-    printf("%lu (%.6f s)\n", res, elapsed(&t1, &t2));
+    printf("pipes (%d): %d (%.6f s)\n", N_PROC, pipes, elapsed(&t1, &t2));
 
-    printf("threads (%d): ", N_THREADS);
+    // mmap (shared memory + processes)
     clock_gettime(CLOCK_MONOTONIC, &t1);
-    res = threads_compute(N_THREADS, DATA_PATH, add_func);
+    int mm = mmap_compute(N_PROC, DATA_PATH, add_func);
     clock_gettime(CLOCK_MONOTONIC, &t2);
-    printf("%lu (%.6f s)\n", res, elapsed(&t1, &t2));
+    printf("mmap (%d): %d (%.6f s)\n", N_PROC, mm, elapsed(&t1, &t2));
+
+    // pthreads
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    int thr = threads_compute(N_THREADS, DATA_PATH, add_func);
+    clock_gettime(CLOCK_MONOTONIC, &t2);
+    printf("threads (%d): %d (%.6f s)\n", N_THREADS, thr, elapsed(&t1, &t2));
 
     return 0;
 }
