@@ -3,22 +3,42 @@
 #include <stdlib.h>
 
 int *load_numbers(const char *path, size_t *count) {
-    FILE *fp = fopen(path, "r");
-    if (!fp) return NULL;
-    int *arr = NULL, n = 0;
-    char line[128];
-    while (fgets(line, sizeof(line), fp)) {
-        char *tok = strtok(line, ", \t\n");
-        while (tok) {
-            arr = realloc(arr, (n + 1) * sizeof(int));
-            arr[n++] = atoi(tok);
-            tok = strtok(NULL, ", \t\n");
-        }
+    FILE *f = fopen(path, "r");
+    if (!f) {
+        *count = 0;
+        return NULL;
     }
-    fclose(fp);
+    size_t cap = 128, n = 0;
+    int *arr = malloc(cap * sizeof(int));
+    if (!arr) {
+        fclose(f);
+        *count = 0;
+        return NULL;
+    }
+    int tmp;
+    while (fscanf(f, "%d", &tmp) == 1) {
+        if (n == cap) {
+            cap *= 2;
+            int *new_arr = realloc(arr, cap * sizeof(int));
+            if (!new_arr) {
+                free(arr);
+                fclose(f);
+                *count = 0;
+                return NULL;
+            }
+            arr = new_arr;
+        }
+        arr[n++] = tmp;
+    }
+    fclose(f);
+    if (n == 0) {
+        free(arr);
+        *count = 0;
+        return NULL;
+    }
     *count = n;
     return arr;
 }
 
-int add_func(int a, int b) { return a + b; }
+unsigned long add_func(int a, int b) { return (unsigned long)a + b; }
 unsigned long max_func(int a, int b) { return a > b ? a : b; }
