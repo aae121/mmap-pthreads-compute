@@ -3,17 +3,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h> // for sysconf
 
-#define DATA_PATH   "data/numbers.txt"
-#define N_PROC      4
-#define N_THREADS   4
+#define DATA_PATH "data/numbers.txt"
 
-// Function to calculate time difference
+// Function to compute elapsed seconds
 static double elapsed(const struct timespec *a, const struct timespec *b) {
     return (b->tv_sec - a->tv_sec) + (b->tv_nsec - a->tv_nsec) / 1e9;
 }
 
-// Helper to log each result into CSV file
+// Median smoothing for stable curve
+double median(double *arr, int n) {
+    for (int i = 0; i < n - 1; i++)
+        for (int j = 0; j < n - i - 1; j++)
+            if (arr[j] > arr[j + 1]) {
+                double tmp = arr[j];
+                arr[j] = arr[j + 1];
+                arr[j + 1] = tmp;
+            }
+    return arr[n / 2];
+}
+
+// CSV logger
 void log_result_to_csv(const char *method, int n, double time, unsigned long result) {
     FILE *fp = fopen("performance_data.csv", "a");
     if (fp) {
@@ -23,62 +34,78 @@ void log_result_to_csv(const char *method, int n, double time, unsigned long res
 }
 
 int main(void) {
-    struct timespec t1, t2;
+    // Auto-detect available cores
+    int N_CORES = sysconf(_SC_NPROCESSORS_ONLN);
+    int N_PROC = N_CORES;
+    int N_THREADS = N_CORES;
 
-    // Define test sizes for many data points
-    int sizes[] = {1000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000};
+    printf("🧠 Using %d CPU cores for parallel computation\n", N_CORES);
+
+    int sizes[] = {1000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000, 5000000};
     int num_sizes = sizeof(sizes) / sizeof(sizes[0]);
 
-    // Create / overwrite CSV header
     FILE *fp = fopen("performance_data.csv", "w");
     if (fp) {
         fprintf(fp, "input_size,method,time_seconds,result\n");
         fclose(fp);
     }
 
-    // Loop over all test sizes
+    struct timespec t1, t2;
+
+    // Loop through all sizes
     for (int i = 0; i < num_sizes; i++) {
         int n = sizes[i];
-        char cmd[256];
         printf("\n📊 Testing input size = %d\n", n);
 
-        // Generate data file for this test
+        char cmd[256];
         sprintf(cmd, "mkdir -p data && seq 1 %d > %s", n, DATA_PATH);
         system(cmd);
 
-        // Sequential
-        clock_gettime(CLOCK_MONOTONIC, &t1);
-        int seq = sequential_compute(DATA_PATH, add_func);
-        clock_gettime(CLOCK_MONOTONIC, &t2);
-        double seq_time = elapsed(&t1, &t2);
-        printf("sequential: %d (%.6f s)\n", seq, seq_time);
-        log_result_to_csv("sequential", n, seq_time, seq);
+        // Repeat tests multiple times for median smoothing
+        int runs = 5;
+        double times_seq[runs], times_pipes[runs], times_mmap[runs], times_threads[runs];
+        unsigned long result = 0;
 
-        // Pipes
-        clock_gettime(CLOCK_MONOTONIC, &t1);
-        int pipes = pipes_compute(N_PROC, DATA_PATH, add_func);
-        clock_gettime(CLOCK_MONOTONIC, &t2);
-        double pipes_time = elapsed(&t1, &t2);
-        printf("pipes (%d): %d (%.6f s)\n", N_PROC, pipes, pipes_time);
-        log_result_to_csv("pipes", n, pipes_time, pipes);
+        for (int r = 0; r < runs; r++) {
+            // Sequential
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            result = sequential_compute(DATA_PATH, add_func);
+            clock_gettime(CLOCK_MONOTONIC, &t2);
+            times_seq[r] = elapsed(&t1, &t2);
 
-        // mmap
-        clock_gettime(CLOCK_MONOTONIC, &t1);
-        int mm = mmap_compute(N_PROC, DATA_PATH, add_func);
-        clock_gettime(CLOCK_MONOTONIC, &t2);
-        double mmap_time = elapsed(&t1, &t2);
-        printf("mmap (%d): %d (%.6f s)\n", N_PROC, mm, mmap_time);
-        log_result_to_csv("mmap", n, mmap_time, mm);
+            // Pipes
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            pipes_compute(N_PROC, DATA_PATH, add_func);
+            clock_gettime(CLOCK_MONOTONIC, &t2);
+            times_pipes[r] = elapsed(&t1, &t2);
 
-        // pthreads
-        clock_gettime(CLOCK_MONOTONIC, &t1);
-        int thr = threads_compute(N_THREADS, DATA_PATH, add_func);
-        clock_gettime(CLOCK_MONOTONIC, &t2);
-        double thr_time = elapsed(&t1, &t2);
-        printf("threads (%d): %d (%.6f s)\n", N_THREADS, thr, thr_time);
-        log_result_to_csv("threads", n, thr_time, thr);
+            // mmap
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            mmap_compute(N_PROC, DATA_PATH, add_func);
+            clock_gettime(CLOCK_MONOTONIC, &t2);
+            times_mmap[r] = elapsed(&t1, &t2);
+
+            // Threads
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+            threads_compute(N_THREADS, DATA_PATH, add_func);
+            clock_gettime(CLOCK_MONOTONIC, &t2);
+            times_threads[r] = elapsed(&t1, &t2);
+        }
+
+        double t_seq = median(times_seq, runs);
+        double t_pipes = median(times_pipes, runs);
+        double t_mmap = median(times_mmap, runs);
+        double t_threads = median(times_threads, runs);
+
+        printf("✅ Sequential: %.6f s | Pipes: %.6f s | mmap: %.6f s | Threads: %.6f s\n",
+               t_seq, t_pipes, t_mmap, t_threads);
+
+        log_result_to_csv("sequential", n, t_seq, result);
+        log_result_to_csv("pipes", n, t_pipes, result);
+        log_result_to_csv("mmap", n, t_mmap, result);
+        log_result_to_csv("threads", n, t_threads, result);
     }
 
-    printf("\n✅ Results saved to performance_data.csv\n");
+    printf("\n✅ All results saved to performance_data.csv\n");
     return 0;
 }
