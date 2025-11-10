@@ -5,15 +5,17 @@
 int *load_numbers(const char *path, size_t *count) {
     FILE *f = fopen(path, "r");
     if (!f) {
+        fprintf(stderr, "Error: Could not open file '%s'\n", path);
         *count = 0;
-        return NULL;
+        exit(EXIT_FAILURE);
     }
     size_t cap = 128, n = 0;
     int *arr = malloc(cap * sizeof(int));
     if (!arr) {
+        fprintf(stderr, "Error: Memory allocation failed\n");
         fclose(f);
         *count = 0;
-        return NULL;
+        exit(EXIT_FAILURE);
     }
     int tmp;
     while (fscanf(f, "%d", &tmp) == 1) {
@@ -21,10 +23,11 @@ int *load_numbers(const char *path, size_t *count) {
             cap *= 2;
             int *new_arr = realloc(arr, cap * sizeof(int));
             if (!new_arr) {
+                fprintf(stderr, "Error: Memory allocation failed\n");
                 free(arr);
                 fclose(f);
                 *count = 0;
-                return NULL;
+                exit(EXIT_FAILURE);
             }
             arr = new_arr;
         }
@@ -32,9 +35,10 @@ int *load_numbers(const char *path, size_t *count) {
     }
     fclose(f);
     if (n == 0) {
+        fprintf(stderr, "Error: No valid numbers found in file '%s'\n", path);
         free(arr);
         *count = 0;
-        return NULL;
+        exit(EXIT_FAILURE);
     }
     *count = n;
     return arr;
