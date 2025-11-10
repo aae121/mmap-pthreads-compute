@@ -37,6 +37,15 @@ int main(void) {
     int thr = threads_compute(N_THREADS, DATA_PATH, add_func);
     clock_gettime(CLOCK_MONOTONIC, &t2);
     printf("threads (%d): %d (%.6f s)\n", N_THREADS, thr, elapsed(&t1, &t2));
+    FILE *fp = fopen("results.csv", "a");
+    if (fp) {
+        fprintf(fp, "method,time_s,result\n");
+        fprintf(fp, "sequential,%.6f,%d\n", elapsed(&t1, &t2), seq);
+        fprintf(fp, "pipes,%.6f,%d\n", elapsed(&t1, &t2), pipes);
+        fprintf(fp, "mmap,%.6f,%d\n", elapsed(&t1, &t2), mm);
+        fprintf(fp, "threads,%.6f,%d\n", elapsed(&t1, &t2), thr);
+        fclose(fp);
+    }
 
     return 0;
 }
