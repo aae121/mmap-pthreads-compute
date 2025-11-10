@@ -2,6 +2,7 @@
 #include "utils.h"
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
 
 #define DATA_PATH   "data/numbers.txt"
 #define N_PROC      4
