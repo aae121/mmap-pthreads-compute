@@ -23,7 +23,11 @@ int main(void) {
     fprintf(fp, "N,Sequential,Pipes,Mmap,Threads\n");
 
     long N = 10000;  // Start small
+<<<<<<< HEAD
+    while (N <= 5000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000) {  // Go up to 50 million
+=======
     while (N <= 500000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 {  // Go up to 50 million
+>>>>>>> 83c8c1928f07aaef1edf82dbb7566fa9beb7ecbc
         char cmd[128];
         snprintf(cmd, sizeof(cmd), "head -n %ld %s > temp.txt", N, DATA_PATH);
         system(cmd);
