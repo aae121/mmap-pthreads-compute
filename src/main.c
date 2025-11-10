@@ -8,50 +8,62 @@
 #define N_PROC      4
 #define N_THREADS   4
 
+// Helper function to measure elapsed time
 static double elapsed(const struct timespec *a, const struct timespec *b) {
     return (b->tv_sec - a->tv_sec) + (b->tv_nsec - a->tv_nsec) / 1e9;
 }
 
 int main(void) {
-    int sizes[] = {1000, 2000, 5000, 10000, 20000, 40000, 80000, 160000, 320000, 640000, 1000000};
-    int num_sizes = sizeof(sizes) / sizeof(sizes[0]);
-
     FILE *fp = fopen("results.csv", "w");
+    if (!fp) {
+        perror("Error creating results.csv");
+        return 1;
+    }
+
     fprintf(fp, "N,Sequential,Pipes,Mmap,Threads\n");
 
-    for (int s = 0; s < num_sizes; s++) {
+    long N = 10000;  // Start small
+    while (N <= 50000000) {  // Go up to 50 million
         char cmd[128];
-        snprintf(cmd, sizeof(cmd), "head -n %d %s > temp.txt", sizes[s], DATA_PATH);
+        snprintf(cmd, sizeof(cmd), "head -n %ld %s > temp.txt", N, DATA_PATH);
         system(cmd);
 
         struct timespec t1, t2;
         double seq_t, pipes_t, mmap_t, threads_t;
         int seq, pipes, mm, thr;
 
+        // Sequential
         clock_gettime(CLOCK_MONOTONIC, &t1);
         seq = sequential_compute("temp.txt", add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
         seq_t = elapsed(&t1, &t2);
 
+        // Pipes
         clock_gettime(CLOCK_MONOTONIC, &t1);
         pipes = pipes_compute(N_PROC, "temp.txt", add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
         pipes_t = elapsed(&t1, &t2);
 
+        // Mmap
         clock_gettime(CLOCK_MONOTONIC, &t1);
         mm = mmap_compute(N_PROC, "temp.txt", add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
         mmap_t = elapsed(&t1, &t2);
 
+        // Threads
         clock_gettime(CLOCK_MONOTONIC, &t1);
         thr = threads_compute(N_THREADS, "temp.txt", add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
         threads_t = elapsed(&t1, &t2);
 
-        fprintf(fp, "%d,%.6f,%.6f,%.6f,%.6f\n", sizes[s], seq_t, pipes_t, mmap_t, threads_t);
-        printf("Processed N=%d\n", sizes[s]);
+        // Write to CSV
+        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", N, seq_t, pipes_t, mmap_t, threads_t);
+        printf("Processed N=%ld\n", N);
+
+        N = (long)(N * 1.3); // Smooth increase (30% each step)
     }
 
     fclose(fp);
+    printf("✅ Results saved to results.csv\n");
     return 0;
 }
