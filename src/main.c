@@ -1,10 +1,34 @@
-#define MAX_N 50000000
-#define RUNS 5
-#define N_THREADS 16
-#define N_PROC 16
+#include "compute.h"
+#include "utils.h"
+#include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
 
-// ---------- main benchmarking ----------
+#define DATA_PATH   "data/numbers.txt"
+
+// Helper function to measure elapsed time
+static double elapsed(const struct timespec *a, const struct timespec *b) {
+    return (b->tv_sec - a->tv_sec) + (b->tv_nsec - a->tv_nsec) / 1e9;
+}
+
+void write_numbers_space(const char *path) {
+    FILE *fp = fopen(path, "w");
+    if (!fp) {
+        perror("Error opening file");
+        exit(1);
+    }
+
+    for (long i = 1; i <= 1000000; i++) {
+        fprintf(fp, "%ld", i);        // write the number
+        if (i < 1000000) fprintf(fp, " "); // add a space except after the last number
+    }
+
+    fclose(fp);
+    printf("✅ Numbers 1–1,000,000 written to %s (space-separated)\n", path);
+}
+
 int main(void) {
+    write_numbers_space(DATA_PATH);
     FILE *fp = fopen("results.csv", "w");
     if (!fp) {
         perror("Error creating results.csv");
@@ -13,61 +37,46 @@ int main(void) {
 
     fprintf(fp, "N,Sequential,Pipes,Mmap,Threads\n");
 
-    long N = 10000; // starting dataset size
+    long Number = 1;  // Start small
+    while (Number <= 100) {  // Go up to 50 million
+        char cmd[2048];
+        snprintf(cmd, sizeof(cmd), "head -n %ld %s > temp.txt", 1L, DATA_PATH);
 
-    while (N <= MAX_N) {
-        char tempname[64];
-        sprintf(tempname, "temp_%ld.txt", N);
+        system(cmd);
 
-        // Generate subset of size N
-        generate_subset(DATA_PATH, tempname, N);
+        struct timespec t1, t2;
+        double seq_t, pipes_t, mmap_t, threads_t;
+        int seq, pipes, mm, thr;
 
-        double seq_avg = 0, pipes_avg = 0, mmap_avg = 0, threads_avg = 0;
+        // Sequential
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        seq = sequential_compute("temp.txt", add_func);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        seq_t = elapsed(&t1, &t2);
 
-        for (int r = 0; r < RUNS; r++) {
-            struct timespec t1, t2;
+        // Pipes
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        pipes = pipes_compute(Number, "temp.txt", add_func);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        pipes_t = elapsed(&t1, &t2);
 
-            // ---------- SEQUENTIAL ----------
-            drop_cache();
-            clock_gettime(CLOCK_MONOTONIC, &t1);
-            sequential_compute(tempname, add_func);
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            seq_avg += elapsed(&t1, &t2);
+        // Mmap
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        mm = mmap_compute(Number, "temp.txt", add_func);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        mmap_t = elapsed(&t1, &t2);
 
-            // ---------- PIPES ----------
-            drop_cache();
-            clock_gettime(CLOCK_MONOTONIC, &t1);
-            pipes_compute(N_PROC, tempname, add_func);
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            pipes_avg += elapsed(&t1, &t2);
+        // Threads
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        thr = threads_compute(Number, "temp.txt", add_func);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+        threads_t = elapsed(&t1, &t2);
 
-            // ---------- MMAP ----------
-            drop_cache();
-            clock_gettime(CLOCK_MONOTONIC, &t1);
-            mmap_compute(N_PROC, tempname, add_func);
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            mmap_avg += elapsed(&t1, &t2);
+        // Write to CSV
+        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", Number, seq_t, pipes_t, mmap_t, threads_t);
+        printf("Processed number of processes=%ld\n", Number);
 
-            // ---------- THREADS ----------
-            drop_cache();
-            clock_gettime(CLOCK_MONOTONIC, &t1);
-            threads_compute(N_THREADS, tempname, add_func);
-            clock_gettime(CLOCK_MONOTONIC, &t2);
-            threads_avg += elapsed(&t1, &t2);
-        }
-
-        // Average over multiple runs
-        seq_avg     /= RUNS;
-        pipes_avg   /= RUNS;
-        mmap_avg    /= RUNS;
-        threads_avg /= RUNS;
-
-        // Write results
-        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", N, seq_avg, pipes_avg, mmap_avg, threads_avg);
-
-        printf("✅ Finished N = %ld\n", N);
-
-        N = (long)(N * 1.3); // gradually increase dataset size
+        Number = (Number+1); // Smooth increase (30% each step)
     }
 
     fclose(fp);
