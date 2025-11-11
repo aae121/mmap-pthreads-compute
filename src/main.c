@@ -1,99 +1,66 @@
 #include "compute.h"
 #include "utils.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
+#include <stdlib.h>
 
-#define DATA_PATH   "data/numbers.txt"
-#define N_PROC      8
-#define N_THREADS   8
+#define N_PROC      16
+#define N_THREADS   16
 #define MAX_N       50000000
 
-static double elapsed(struct timespec *a, struct timespec *b) {
+static double elapsed(const struct timespec *a, const struct timespec *b) {
     return (b->tv_sec - a->tv_sec) + (b->tv_nsec - a->tv_nsec) / 1e9;
-}
-
-static void write_subset(const char *src_path, const char *dst_path, long N) {
-    FILE *src = fopen(src_path, "r");
-    if (!src) { perror("source"); exit(1); }
-
-    FILE *dst = fopen(dst_path, "w");
-    if (!dst) { perror("dst"); exit(1); }
-
-    long count = 0;
-    int num;
-
-    while (count < N && fscanf(src, "%d", &num) == 1) {
-        fprintf(dst, "%d\n", num);
-        count++;
-    }
-
-    fclose(src);
-    fclose(dst);
-
-    if (count < N) {
-        fprintf(stderr,
-            "ERROR: Input file has only %ld numbers but requested N=%ld\n",
-            count, N
-        );
-        exit(1);
-    }
 }
 
 int main(void) {
     FILE *fp = fopen("results.csv", "w");
-    if (!fp) {
-        perror("results.csv");
-        exit(1);
-    }
+    if (!fp) { perror("Error creating results.csv"); return 1; }
 
     fprintf(fp, "N,Sequential,Pipes,Mmap,Threads\n");
 
     long N = 10000;
-
     while (N <= MAX_N) {
-
-        char tempname[64];
-        sprintf(tempname, "subset_%ld.txt", N);
-
-        write_subset(DATA_PATH, tempname, N);
+        // Create an array of N numbers in memory
+        int *arr = malloc(N * sizeof(int));
+        if (!arr) { perror("malloc failed"); return 1; }
+        for (long i = 0; i < N; i++)
+            arr[i] = i + 1; // simple increasing sequence
 
         struct timespec t1, t2;
-        double t_seq, t_pipe, t_mmap, t_thr;
+        double seq_t, pipes_t, mmap_t, threads_t;
 
-        // SEQUENTIAL
+        // Sequential
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        sequential_compute(tempname, add_func);
+        unsigned long seq = sequential_compute_array(arr, N, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        t_seq = elapsed(&t1, &t2);
+        seq_t = elapsed(&t1, &t2);
 
-        // PIPES
+        // Pipes (simulated in-memory variant)
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        pipes_compute(N_PROC, tempname, add_func);
+        unsigned long pipes = pipes_compute_array(N_PROC, arr, N, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        t_pipe = elapsed(&t1, &t2);
+        pipes_t = elapsed(&t1, &t2);
 
-        // MMAP
+        // Mmap (simulated shared memory variant)
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        mmap_compute(N_PROC, tempname, add_func);
+        unsigned long mm = mmap_compute_array(N_PROC, arr, N, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        t_mmap = elapsed(&t1, &t2);
+        mmap_t = elapsed(&t1, &t2);
 
-        // THREADS
+        // Threads
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        threads_compute(N_THREADS, tempname, add_func);
+        unsigned long thr = threads_compute_array(N_THREADS, arr, N, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        t_thr = elapsed(&t1, &t2);
+        threads_t = elapsed(&t1, &t2);
 
-        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n",
-                N, t_seq, t_pipe, t_mmap, t_thr);
+        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", N, seq_t, pipes_t, mmap_t, threads_t);
+        printf("Processed N = %ld\n", N);
 
-        printf("N = %ld done.\n", N);
-
-        N = (long)(N * 1.35);   // smoothly increase N
+        free(arr);
+        N = (long)(N * 1.3);
     }
 
     fclose(fp);
-    printf("Benchmark complete! Results saved to results.csv\n");
+    printf("✅ Results saved to results.csv\n");
     return 0;
 }
