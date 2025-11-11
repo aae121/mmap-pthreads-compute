@@ -85,7 +85,7 @@ int main(void) {
         fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", N, seq_t, pipes_t, mmap_t, threads_t);
         printf("✅ Processed N = %ld\n", N);
 
-        N = (long)(N * 1.3); // Increase by ~30% each step
+        N = (long)(N * 1.1); // Increase by ~30% each step
     }
 
     fclose(fp);
