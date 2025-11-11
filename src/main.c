@@ -1,68 +1,99 @@
 #include "compute.h"
 #include "utils.h"
 #include <stdio.h>
-#include <time.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define DATA_PATH   "data/numbers.txt"
+#define N_PROC      8
+#define N_THREADS   8
+#define MAX_N       50000000
 
-// Helper function to measure elapsed time
-static double elapsed(const struct timespec *a, const struct timespec *b) {
+static double elapsed(struct timespec *a, struct timespec *b) {
     return (b->tv_sec - a->tv_sec) + (b->tv_nsec - a->tv_nsec) / 1e9;
+}
+
+static void write_subset(const char *src_path, const char *dst_path, long N) {
+    FILE *src = fopen(src_path, "r");
+    if (!src) { perror("source"); exit(1); }
+
+    FILE *dst = fopen(dst_path, "w");
+    if (!dst) { perror("dst"); exit(1); }
+
+    long count = 0;
+    int num;
+
+    while (count < N && fscanf(src, "%d", &num) == 1) {
+        fprintf(dst, "%d\n", num);
+        count++;
+    }
+
+    fclose(src);
+    fclose(dst);
+
+    if (count < N) {
+        fprintf(stderr,
+            "ERROR: Input file has only %ld numbers but requested N=%ld\n",
+            count, N
+        );
+        exit(1);
+    }
 }
 
 int main(void) {
     FILE *fp = fopen("results.csv", "w");
     if (!fp) {
-        perror("Error creating results.csv");
-        return 1;
+        perror("results.csv");
+        exit(1);
     }
 
     fprintf(fp, "N,Sequential,Pipes,Mmap,Threads\n");
 
-    long Number = 1;  // Start small
-    while (Number <= 100) {  // Go up to 50 million
-        char cmd[2048];
-        snprintf(cmd, sizeof(cmd), "head -n %ld %s > temp.txt", 1L, DATA_PATH);
+    long N = 10000;
 
-        system(cmd);
+    while (N <= MAX_N) {
+
+        char tempname[64];
+        sprintf(tempname, "subset_%ld.txt", N);
+
+        write_subset(DATA_PATH, tempname, N);
 
         struct timespec t1, t2;
-        double seq_t, pipes_t, mmap_t, threads_t;
-        int seq, pipes, mm, thr;
+        double t_seq, t_pipe, t_mmap, t_thr;
 
-        // Sequential
+        // SEQUENTIAL
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        seq = sequential_compute("temp.txt", add_func);
+        sequential_compute(tempname, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        seq_t = elapsed(&t1, &t2);
+        t_seq = elapsed(&t1, &t2);
 
-        // Pipes
+        // PIPES
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        pipes = pipes_compute(Number, "temp.txt", add_func);
+        pipes_compute(N_PROC, tempname, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        pipes_t = elapsed(&t1, &t2);
+        t_pipe = elapsed(&t1, &t2);
 
-        // Mmap
+        // MMAP
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        mm = mmap_compute(Number, "temp.txt", add_func);
+        mmap_compute(N_PROC, tempname, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        mmap_t = elapsed(&t1, &t2);
+        t_mmap = elapsed(&t1, &t2);
 
-        // Threads
+        // THREADS
         clock_gettime(CLOCK_MONOTONIC, &t1);
-        thr = threads_compute(Number, "temp.txt", add_func);
+        threads_compute(N_THREADS, tempname, add_func);
         clock_gettime(CLOCK_MONOTONIC, &t2);
-        threads_t = elapsed(&t1, &t2);
+        t_thr = elapsed(&t1, &t2);
 
-        // Write to CSV
-        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", Number, seq_t, pipes_t, mmap_t, threads_t);
-        printf("Processed number of processes=%ld\n", Number);
+        fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n",
+                N, t_seq, t_pipe, t_mmap, t_thr);
 
-        Number = (Number+1); // Smooth increase (30% each step)
+        printf("N = %ld done.\n", N);
+
+        N = (long)(N * 1.35);   // smoothly increase N
     }
 
     fclose(fp);
-    printf("✅ Results saved to results.csv\n");
+    printf("Benchmark complete! Results saved to results.csv\n");
     return 0;
 }
