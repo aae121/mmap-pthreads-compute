@@ -63,7 +63,7 @@ int main(void) {
 
     fprintf(fp, "N,Sequential,Pipes,Mmap,Threads\n");
 
-    long N = 10000;
+    long N = 10;
 
     while (N <= MAX_N) {
 
