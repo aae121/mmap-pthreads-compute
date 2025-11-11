@@ -23,7 +23,7 @@ int main(void) {
     long Number = 1;  // Start small
     while (Number <= 100) {  // Go up to 50 million
         char cmd[2048];
-        snprintf(cmd, sizeof(cmd), "head -10000000000 %ld %s > temp.txt", DATA_PATH);
+        snprintf(cmd, sizeof(cmd), "head -n %ld %s > temp.txt", 1 DATA_PATH);
         system(cmd);
 
         struct timespec t1, t2;
