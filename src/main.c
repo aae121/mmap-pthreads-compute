@@ -58,7 +58,7 @@ int main(void) {
         fprintf(fp, "%ld,%.6f,%.6f,%.6f,%.6f\n", Number, seq_t, pipes_t, mmap_t, threads_t);
         printf("Processed number of processes=%ld\n", Number);
 
-        Number = (long)(1.3*Number); // Smooth increase (30% each step)
+        Number = (Number+1); // Smooth increase (30% each step)
     }
 
     fclose(fp);
