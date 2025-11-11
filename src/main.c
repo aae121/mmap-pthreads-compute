@@ -96,40 +96,43 @@ static int timed_compute(int mode, int workers,
 static int run_bench(const char *path) {
     const int workers_list[] = {1, 2, 4, 8};
     const size_t n_workers = sizeof(workers_list) / sizeof(workers_list[0]);
-    int (*func)(int, int) = add_func; /* sum */
+    int (*func)(int, int) = add_func; /* use sum */
 
-    printf("#method,workers,time_ms,result\n");
+    FILE *csv = fopen("results.csv", "w");
+    if (!csv) {
+        perror("fopen results.csv");
+        return 0;
+    }
 
-    /* Baseline: sequential (workers = 1) */
+    fprintf(csv, "method,workers,time_ms,result\n");
+
     double ms = 0.0;
     int seq_res = timed_compute(0, 1, path, func, &ms);
     if (seq_res == 0) {
-        fprintf(stderr,
-                "sequential_compute failed (result 0) in bench; "
-                "ensure numbers.txt has positive integers.\n");
+        fprintf(stderr, "sequential_compute failed (no data or bad file)\n");
+        fclose(csv);
         return 0;
     }
-    printf("sequential,1,%.3f,%d\n", ms, seq_res);
+    fprintf(csv, "sequential,1,%.3f,%d\n", ms, seq_res);
 
-    /* Parallel methods. Skip clear failures (result == 0). */
     for (size_t i = 0; i < n_workers; ++i) {
         int w = workers_list[i];
-
         int r_pipes = timed_compute(1, w, path, func, &ms);
         if (r_pipes != 0)
-            printf("pipes,%d,%.3f,%d\n", w, ms, r_pipes);
-
+            fprintf(csv, "pipes,%d,%.3f,%d\n", w, ms, r_pipes);
         int r_mmap = timed_compute(2, w, path, func, &ms);
         if (r_mmap != 0)
-            printf("mmap,%d,%.3f,%d\n", w, ms, r_mmap);
-
+            fprintf(csv, "mmap,%d,%.3f,%d\n", w, ms, r_mmap);
         int r_thr = timed_compute(3, w, path, func, &ms);
         if (r_thr != 0)
-            printf("threads,%d,%.3f,%d\n", w, ms, r_thr);
+            fprintf(csv, "threads,%d,%.3f,%d\n", w, ms, r_thr);
     }
 
+    fclose(csv);
+    printf("✅ Benchmark results saved to results.csv\n");
     return 1;
 }
+
 
 int main(int argc, char **argv) {
     if (argc < 2) {
